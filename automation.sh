@@ -32,3 +32,5 @@ fi
 echo "-----------apache2 service status check done, started if its in stoped--------------------"
 sudo systemctl status $pkgs  
 echo "--------------status as after started---------------------------"
+
+
