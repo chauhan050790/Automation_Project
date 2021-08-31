@@ -1,36 +1,60 @@
 #!/bin/bash
-sudo apt-get update
-echo "----------package update done---------------------"
-# Below code to check whether apache2 installed or not, if not then install it.
-pkgs='apache2'
-if ! dpkg -s $pkgs >/dev/null 2>&1 
-then
-        sudo apt-get install $pkgs -y
+
+#variables
+name="vipin"
+s3_bucket="upgrad-vipin"
+
+#update packages
+sudo apt update -y
+
+#check for apache2 installation
+if [[ apache2 != $(dpkg --get-selections apache2 | awk '{print $1}') ]]; then
+	
+	apt install apache2 -y
 fi
 
-echo "-----------apache2 check done--------------------"
-#Below code will check apache2 service is enabled or not, if not then enable it.
-apache2_check="$(systemctl status apache2.service | grep Active | awk {'print $3'})"
-
-if [ "${apache2_check}" = "(dead)" ] 
-then
-        systemctl enable apache2.service
-        echo "service enabled"
+#check if apache2 is running
+running=$(systemctl status apache2 | grep active | awk '{print $3}' | tr -d '()')
+if [[ running != ${running} ]]; then
+	systemctl start apache2
 fi
 
-#Below code will check whether apache2 is running or not, if not then start the service.
-ServiceStatus="$(systemctl is-active apache2.service)"
-
-if [ "${ServiceStatus}" = "active" ] 
-then
-	echo "Already apache2 running" 
-else
-        sudo systemctl start apache2
-        echo "Service started"
+#To check is apache2 service is enabled
+enabled=$(systemctl is-enabled apache2 | grep "enabled")
+if [[ enabled != ${enabled} ]]; then
+	systemctl enable apache2
 fi
 
-echo "-----------apache2 service status check done, started if its in stoped--------------------"
-sudo systemctl status $pkgs  
-echo "--------------status as after started---------------------------"
+#creating file
 
+timestamp=$(date '+%d%m%Y-%H%M%S')
+
+#create tar archive
+
+cd /var/log/apache2
+tar -cf /tmp/${name}-httpd-logs-${timestamp}.tar *.log
+
+#copy logs to s3 bucket
+if [[ -f /tmp/${name}-httpd-logs-${timestamp}.tar ]]; then
+	aws s3 cp /tmp/${name}-httpd-logs-${timestamp}.tar s3://${s3_bucket}/${name}-httpd-logs-${timestamp}.tar
+fi
+
+docroot="/var/www/html"
+
+#tocheck if the file exists
+if [[ ! -f ${docroot}/inventory.html ]]; then
+	echo -e 'Log Type\t-\tTime Created\t-\tType\t-\tSize' > ${docroot}/inventory.html
+fi
+
+#insert logs to file
+if [[ -f ${docroot}/inventory.html ]]; then
+	size=$(du -h /tmp/${name}-httpd-logs-${timestamp}.tar | awk '{print $1}')
+	echo -e "httpd-logs\t-\t${timestamp}\t-\ttar\t-\t${size}" >> ${docroot}/inventory.html
+fi
+
+#creating cronjob
+
+if [[ ! -f /etc/cron.d/automation ]]; then
+	echo "* * * * * root /root/Automation_Project/automation.sh" >> /etc/cron.d/automation
+fi
 
